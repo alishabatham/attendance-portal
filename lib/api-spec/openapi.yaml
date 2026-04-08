@@ -3,13 +3,22 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Smart Attendance & Student Profiling Portal API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: user
+    description: User profile operations
+  - name: attendance
+    description: Attendance operations
+  - name: admin
+    description: Admin operations
+
 paths:
   /healthz:
     get:
@@ -24,7 +33,396 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/signup:
+    post:
+      operationId: signup
+      tags: [auth]
+      summary: Register a new student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - email already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in an existing student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /user/profile:
+    get:
+      operationId: getProfile
+      tags: [user]
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: saveProfile
+      tags: [user]
+      summary: Save or update student onboarding profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveProfileBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/mark:
+    post:
+      operationId: markAttendance
+      tags: [attendance]
+      summary: Mark today's attendance
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Attendance marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+        "409":
+          description: Already marked today
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/today:
+    get:
+      operationId: getTodayAttendance
+      tags: [attendance]
+      summary: Check if today's attendance is marked
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodayAttendanceResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/report/{userId}:
+    get:
+      operationId: getAttendanceReport
+      tags: [attendance]
+      summary: Get monthly attendance report for a student
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Month (1-12), defaults to current month
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Year, defaults to current year
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceReport"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /attendance/history/{userId}:
+    get:
+      operationId: getAttendanceHistory
+      tags: [attendance]
+      summary: Get full attendance history for a student
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecord"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/students:
+    get:
+      operationId: listStudents
+      tags: [admin]
+      summary: List all students with filters
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: interestArea
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/students/{userId}:
+    get:
+      operationId: getStudent
+      tags: [admin]
+      summary: Get a specific student's full profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/attendance:
+    get:
+      operationId: getAdminAttendanceByDate
+      tags: [admin]
+      summary: View attendance records by date
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Date in YYYY-MM-DD format, defaults to today
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceWithStudent"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get overall dashboard stats for admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +432,288 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    SignupBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+      required:
+        - email
+        - password
+        - name
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+      required:
+        - token
+        - user
+
+    SaveProfileBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        joiningDate:
+          type: string
+        collegeName:
+          type: string
+        branch:
+          type: string
+        section:
+          type: string
+        year:
+          type: string
+        semester:
+          type: string
+        subject:
+          type: string
+        interestArea:
+          type: string
+        interestAreaCustom:
+          type: ["string", "null"]
+      required:
+        - fullName
+        - joiningDate
+        - collegeName
+        - branch
+        - section
+        - year
+        - semester
+        - subject
+        - interestArea
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        profileCompleted:
+          type: boolean
+        fullName:
+          type: ["string", "null"]
+        joiningDate:
+          type: ["string", "null"]
+        collegeName:
+          type: ["string", "null"]
+        branch:
+          type: ["string", "null"]
+        section:
+          type: ["string", "null"]
+        year:
+          type: ["string", "null"]
+        semester:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        interestArea:
+          type: ["string", "null"]
+        interestAreaCustom:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - email
+        - name
+        - role
+        - profileCompleted
+        - createdAt
+
+    AttendanceRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        date:
+          type: string
+        time:
+          type: string
+        status:
+          type: string
+      required:
+        - id
+        - userId
+        - date
+        - time
+        - status
+
+    TodayAttendanceResponse:
+      type: object
+      properties:
+        marked:
+          type: boolean
+        record:
+          oneOf:
+            - $ref: "#/components/schemas/AttendanceRecord"
+            - type: "null"
+      required:
+        - marked
+
+    AttendanceReport:
+      type: object
+      properties:
+        userId:
+          type: integer
+        studentName:
+          type: ["string", "null"]
+        joiningDate:
+          type: ["string", "null"]
+        totalWorkingDays:
+          type: integer
+        presentDays:
+          type: integer
+        absentDays:
+          type: integer
+        attendancePercentage:
+          type: number
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyAttendance"
+      required:
+        - userId
+        - totalWorkingDays
+        - presentDays
+        - absentDays
+        - attendancePercentage
+        - records
+
+    DailyAttendance:
+      type: object
+      properties:
+        date:
+          type: string
+        status:
+          type: string
+        time:
+          type: ["string", "null"]
+      required:
+        - date
+        - status
+
+    AttendanceWithStudent:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        date:
+          type: string
+        time:
+          type: string
+        status:
+          type: string
+        studentName:
+          type: ["string", "null"]
+        branch:
+          type: ["string", "null"]
+        year:
+          type: ["string", "null"]
+        email:
+          type: string
+      required:
+        - id
+        - userId
+        - date
+        - time
+        - status
+        - email
+
+    AdminStats:
+      type: object
+      properties:
+        totalStudents:
+          type: integer
+        presentToday:
+          type: integer
+        absentToday:
+          type: integer
+        branchBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/BranchCount"
+        yearBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/YearCount"
+        interestBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/InterestCount"
+      required:
+        - totalStudents
+        - presentToday
+        - absentToday
+        - branchBreakdown
+        - yearBreakdown
+        - interestBreakdown
+
+    BranchCount:
+      type: object
+      properties:
+        branch:
+          type: string
+        count:
+          type: integer
+      required:
+        - branch
+        - count
+
+    YearCount:
+      type: object
+      properties:
+        year:
+          type: string
+        count:
+          type: integer
+      required:
+        - year
+        - count
+
+    InterestCount:
+      type: object
+      properties:
+        interestArea:
+          type: string
+        count:
+          type: integer
+      required:
+        - interestArea
+        - count

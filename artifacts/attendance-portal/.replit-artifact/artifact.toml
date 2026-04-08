@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Smart Attendance Portal"
+version = "1.0.0"
+id = "artifacts/attendance-portal"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23660
+
+[services.development]
+run = "pnpm --filter @workspace/attendance-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/attendance-portal", "run", "build" ]
+publicDir = "artifacts/attendance-portal/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23660"
+BASE_PATH = "/"
