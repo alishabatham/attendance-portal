@@ -70,12 +70,15 @@ router.post("/attendance/mark", authenticate, async (req: AuthenticatedRequest, 
     return;
   }
 
+  const { localTime } = req.body as { localTime?: string };
+  const timeToStore = localTime ?? getCurrentTime();
+
   const [record] = await db
     .insert(attendanceTable)
     .values({
       userId,
       date: today,
-      time: getCurrentTime(),
+      time: timeToStore,
       status: "Present",
     })
     .returning();
