@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { GraduationCap, LayoutDashboard, BarChart2, Users, CalendarCheck, LogOut, Menu, X, Shield } from "lucide-react";
+import { GraduationCap, LayoutDashboard, BarChart2, Users, CalendarCheck, LogOut, Menu, X, Shield, Settings } from "lucide-react";
 import { useState } from "react";
 import { removeToken } from "@/lib/auth";
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
@@ -23,6 +23,7 @@ const adminNavItems: NavItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "Students", href: "/admin/students", icon: Users },
   { label: "Attendance", href: "/admin/attendance", icon: CalendarCheck },
+  { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {

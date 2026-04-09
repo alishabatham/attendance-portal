@@ -3,6 +3,18 @@ import { eq, and } from "drizzle-orm";
 import { db, attendanceTable, usersTable } from "@workspace/db";
 import { authenticate, type AuthenticatedRequest } from "../middlewares/authenticate.js";
 import { GetAttendanceReportParams, GetAttendanceReportQueryParams, GetAttendanceHistoryParams } from "@workspace/api-zod";
+import { getLocationSettings } from "./settings.js";
+
+function haversineDistanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const router: IRouter = Router();
 
@@ -22,6 +34,31 @@ function getCurrentTime(): string {
 router.post("/attendance/mark", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.userId;
   const today = getTodayDate();
+
+  // Location check
+  const locSettings = await getLocationSettings();
+  if (locSettings.enforcement && locSettings.configured) {
+    const { latitude, longitude } = req.body as { latitude?: number; longitude?: number };
+    if (latitude === undefined || longitude === undefined) {
+      res.status(403).json({
+        error: "Location required",
+        code: "LOCATION_REQUIRED",
+        message: "Please allow location access to mark attendance.",
+      });
+      return;
+    }
+    const distM = haversineDistanceM(locSettings.lat!, locSettings.lng!, latitude, longitude);
+    if (distM > locSettings.radiusM) {
+      res.status(403).json({
+        error: "Out of range",
+        code: "OUT_OF_RANGE",
+        message: `You are ${Math.round(distM)}m away from the allowed location (limit: ${locSettings.radiusM}m). Please be on campus to mark attendance.`,
+        distanceM: Math.round(distM),
+        allowedRadiusM: locSettings.radiusM,
+      });
+      return;
+    }
+  }
 
   const existing = await db
     .select()

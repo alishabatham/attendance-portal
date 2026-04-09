@@ -12,6 +12,7 @@ import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminStudents from "@/pages/admin/AdminStudents";
 import AdminStudentDetail from "@/pages/admin/AdminStudentDetail";
 import AdminAttendance from "@/pages/admin/AdminAttendance";
+import AdminSettings from "@/pages/admin/AdminSettings";
 import "@/lib/auth";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
@@ -51,6 +52,7 @@ function Router() {
       <Route path="/admin/students" component={AdminStudents} />
       <Route path="/admin/students/:id" component={AdminStudentDetail} />
       <Route path="/admin/attendance" component={AdminAttendance} />
+      <Route path="/admin/settings" component={AdminSettings} />
       <Route component={NotFound} />
     </Switch>
   );
