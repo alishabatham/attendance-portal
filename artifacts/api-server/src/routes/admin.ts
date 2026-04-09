@@ -146,6 +146,113 @@ router.get(
 );
 
 router.get(
+  "/admin/monthly-report",
+  authenticate,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res): Promise<void> => {
+    const now = new Date();
+    const month = req.query.month ? Number(req.query.month) : now.getMonth() + 1;
+    const year = req.query.year ? Number(req.query.year) : now.getFullYear();
+
+    if (isNaN(month) || month < 1 || month > 12 || isNaN(year)) {
+      res.status(400).json({ error: "Invalid month or year" });
+      return;
+    }
+
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 0);
+    const endDate = endOfMonth > now ? now : endOfMonth;
+
+    // Collect all working days in the month
+    const workingDays: string[] = [];
+    const cursor = new Date(startOfMonth);
+    cursor.setHours(0, 0, 0, 0);
+    while (cursor <= endDate) {
+      const dow = cursor.getDay();
+      if (dow !== 0 && dow !== 6) {
+        workingDays.push(cursor.toISOString().split("T")[0] as string);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Fetch all students
+    const students = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.role, "student"));
+
+    // Fetch all attendance records and filter for the month in-memory
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(endOfMonth.getDate()).padStart(2, "0")}`;
+
+    const allMonthRecords = await db
+      .select()
+      .from(attendanceTable);
+
+    // Build a map: userId -> Set<date>
+    const presentMap = new Map<number, Set<string>>();
+    for (const rec of allMonthRecords) {
+      if (rec.date >= monthStart && rec.date <= monthEnd) {
+        if (!presentMap.has(rec.userId)) {
+          presentMap.set(rec.userId, new Set());
+        }
+        presentMap.get(rec.userId)!.add(rec.date);
+      }
+    }
+
+    const result = students.map((student) => {
+      const portalJoinDate = new Date(student.createdAt);
+      portalJoinDate.setHours(0, 0, 0, 0);
+      const presentSet = presentMap.get(student.id) ?? new Set<string>();
+
+      // Only count working days from when student joined the portal
+      const studentWorkingDays = workingDays.filter((d) => new Date(d) >= portalJoinDate);
+      const presentDays = studentWorkingDays.filter((d) => presentSet.has(d)).length;
+      const absentDays = studentWorkingDays.length - presentDays;
+      const percentage = studentWorkingDays.length > 0
+        ? Math.round((presentDays / studentWorkingDays.length) * 1000) / 10
+        : 0;
+
+      // Per-day status for all working days
+      const dayStatus: Record<string, string> = {};
+      for (const d of workingDays) {
+        const joinedByThen = new Date(d) >= portalJoinDate;
+        if (!joinedByThen) {
+          dayStatus[d] = "—";
+        } else if (presentSet.has(d)) {
+          dayStatus[d] = "P";
+        } else {
+          dayStatus[d] = "A";
+        }
+      }
+
+      return {
+        id: student.id,
+        name: student.fullName ?? student.name,
+        email: student.email,
+        branch: student.branch ?? "",
+        year: student.year ?? "",
+        section: student.section ?? "",
+        portalJoinDate: student.createdAt.toISOString().split("T")[0],
+        joiningDate: student.joiningDate ?? null,
+        totalWorkingDays: studentWorkingDays.length,
+        presentDays,
+        absentDays,
+        percentage,
+        dayStatus,
+      };
+    });
+
+    res.json({
+      month,
+      year,
+      workingDays,
+      students: result,
+    });
+  }
+);
+
+router.get(
   "/admin/stats",
   authenticate,
   requireAdmin,

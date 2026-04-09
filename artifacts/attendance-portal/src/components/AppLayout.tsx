@@ -72,19 +72,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             ? location === "/admin"
             : location === item.href || location.startsWith(item.href + "/");
           return (
-            <Link key={item.href} href={item.href}>
-              <a
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                }`}
-                onClick={() => setMobileOpen(false)}
-                data-testid={`nav-${item.label.toLowerCase()}`}
-              >
-                <item.icon className="w-4 h-4 shrink-0" />
-                {item.label}
-              </a>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                active
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              }`}
+              onClick={() => setMobileOpen(false)}
+              data-testid={`nav-${item.label.toLowerCase()}`}
+            >
+              <item.icon className="w-4 h-4 shrink-0" />
+              {item.label}
             </Link>
           );
         })}
