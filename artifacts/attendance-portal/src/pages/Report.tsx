@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle2, XCircle, Calendar, TrendingUp } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, TrendingUp, Download } from "lucide-react";
 import {
   useGetProfile,
   useGetAttendanceReport,
@@ -10,6 +10,7 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { getToken } from "@/lib/auth";
 
 export default function Report() {
@@ -45,6 +46,47 @@ export default function Report() {
 
   const years = [today.getFullYear() - 1, today.getFullYear()];
 
+  const handleDownloadExcel = useCallback(async () => {
+    if (!report) return;
+    const { utils, writeFile } = await import("xlsx");
+
+    const monthName = months[month - 1];
+    const studentName = report.studentName ?? profile?.fullName ?? profile?.name ?? "Student";
+
+    const summaryData = [
+      ["Attendance Report"],
+      ["Student", studentName],
+      ["Month", `${monthName} ${year}`],
+      [],
+      ["Summary"],
+      ["Total Working Days", report.totalWorkingDays],
+      ["Present Days", report.presentDays],
+      ["Absent Days", report.absentDays],
+      ["Attendance %", `${report.attendancePercentage}%`],
+      [],
+      ["Day-by-Day Breakdown"],
+      ["Date", "Day", "Status", "Time"],
+    ];
+
+    for (const rec of report.records) {
+      const date = new Date(rec.date + "T00:00:00");
+      summaryData.push([
+        rec.date,
+        date.toLocaleDateString("en-US", { weekday: "long" }),
+        rec.status,
+        rec.time ?? "",
+      ]);
+    }
+
+    const wb = utils.book_new();
+    const ws = utils.aoa_to_sheet(summaryData);
+
+    ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+
+    utils.book_append_sheet(wb, ws, "Attendance Report");
+    writeFile(wb, `Attendance_${studentName.replace(/\s+/g, "_")}_${monthName}_${year}.xlsx`);
+  }, [report, month, year, months, profile]);
+
   return (
     <AppLayout>
       <div className="p-6 max-w-4xl mx-auto">
@@ -53,7 +95,7 @@ export default function Report() {
             <h2 className="text-2xl font-bold text-foreground">Attendance Report</h2>
             <p className="text-muted-foreground mt-1">Monthly breakdown of your attendance</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center flex-wrap">
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
               <SelectTrigger className="w-36" data-testid="select-month">
                 <SelectValue />
@@ -74,6 +116,18 @@ export default function Report() {
                 ))}
               </SelectContent>
             </Select>
+            {report && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadExcel}
+                className="flex items-center gap-2 shrink-0"
+                data-testid="button-download-excel"
+              >
+                <Download className="w-4 h-4" />
+                Download Excel
+              </Button>
+            )}
           </div>
         </div>
 

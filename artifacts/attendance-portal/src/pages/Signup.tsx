@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "wouter";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const signupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,6 +31,7 @@ type SignupForm = z.infer<typeof signupSchema>;
 export default function Signup() {
   const [, setLocation] = useLocation();
   const signupMutation = useSignup();
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const form = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
@@ -49,6 +54,32 @@ export default function Signup() {
       }
     );
   };
+
+  const handleGoogleCredential = useCallback(async (credential: string) => {
+    setGoogleLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/auth/google-signin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Google sign-in failed");
+      setToken(data.token);
+      toast.success("Account created with Google");
+      if (data.user.role === "admin") {
+        setLocation("/admin");
+      } else if (!data.user.profileCompleted) {
+        setLocation("/onboarding");
+      } else {
+        setLocation("/dashboard");
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Google sign-in failed");
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [setLocation]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center p-4">
@@ -128,7 +159,7 @@ export default function Signup() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={signupMutation.isPending}
+                disabled={signupMutation.isPending || googleLoading}
                 data-testid="button-submit"
               >
                 {signupMutation.isPending ? (
@@ -144,6 +175,8 @@ export default function Signup() {
                 )}
               </Button>
             </form>
+
+            <GoogleSignInButton onCredential={handleGoogleCredential} text="signup_with" />
 
             <div className="mt-4 text-center text-sm text-muted-foreground">
               Already have an account?{" "}

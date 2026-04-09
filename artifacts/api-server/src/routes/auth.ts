@@ -3,8 +3,11 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { SignupBody, LoginBody } from "@workspace/api-zod";
 import { hashPassword, comparePassword, signToken } from "../lib/auth.js";
+import { OAuth2Client } from "google-auth-library";
 
 const router: IRouter = Router();
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 function formatUser(user: typeof usersTable.$inferSelect) {
   return {
@@ -59,9 +62,9 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
     })
     .returning();
 
-  const token = signToken({ userId: user.id, email: user.email, role: user.role });
+  const token = signToken({ userId: user!.id, email: user!.email, role: user!.role });
 
-  res.status(201).json({ token, user: formatUser(user) });
+  res.status(201).json({ token, user: formatUser(user!) });
 });
 
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -92,6 +95,58 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const token = signToken({ userId: user.id, email: user.email, role: user.role });
 
   res.json({ token, user: formatUser(user) });
+});
+
+router.post("/auth/google-signin", async (req, res): Promise<void> => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    res.status(503).json({ error: "Google sign-in is not configured on this server" });
+    return;
+  }
+
+  const { credential } = req.body as { credential?: string };
+  if (!credential) {
+    res.status(400).json({ error: "Missing Google credential" });
+    return;
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      res.status(400).json({ error: "Invalid Google token" });
+      return;
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name ?? email.split("@")[0] ?? "Student";
+
+    let [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+
+    if (!user) {
+      [user] = await db
+        .insert(usersTable)
+        .values({
+          email,
+          name,
+          passwordHash: "",
+          role: "student",
+          profileCompleted: false,
+        })
+        .returning();
+    }
+
+    const token = signToken({ userId: user!.id, email: user!.email, role: user!.role });
+    res.json({ token, user: formatUser(user!) });
+  } catch {
+    res.status(401).json({ error: "Google authentication failed. Please try again." });
+  }
 });
 
 export default router;

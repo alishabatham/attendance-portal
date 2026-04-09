@@ -1,38 +1,39 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { ArrowLeft, CheckCircle2, XCircle, Calendar } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Calendar, Download } from "lucide-react";
 import {
   useGetStudent,
-  useGetAttendanceHistory,
   useGetAttendanceReport,
   getGetStudentQueryKey,
-  getGetAttendanceHistoryQueryKey,
   getGetAttendanceReportQueryKey,
 } from "@workspace/api-client-react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getToken } from "@/lib/auth";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 export default function AdminStudentDetail() {
   const [, setLocation] = useLocation();
   const params = useParams<{ id: string }>();
   const userId = Number(params.id);
 
+  const today = new Date();
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [year, setYear] = useState(today.getFullYear());
+  const years = [today.getFullYear() - 1, today.getFullYear()];
+
   const { data: student, isLoading } = useGetStudent(userId, {
     query: { queryKey: getGetStudentQueryKey(userId), enabled: !!getToken() && !!userId },
   });
 
-  const { data: history } = useGetAttendanceHistory(userId, {
-    query: { queryKey: getGetAttendanceHistoryQueryKey(userId), enabled: !!getToken() && !!userId },
-  });
-
-  const today = new Date();
-  const month = today.getMonth() + 1;
-  const year = today.getFullYear();
-
-  const { data: report } = useGetAttendanceReport(userId, { month, year }, {
+  const { data: report, isLoading: reportLoading } = useGetAttendanceReport(userId, { month, year }, {
     query: {
       queryKey: getGetAttendanceReportQueryKey(userId, { month, year }),
       enabled: !!getToken() && !!userId,
@@ -44,6 +45,48 @@ export default function AdminStudentDetail() {
       setLocation("/login");
     }
   }, [setLocation]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    if (!report || !student) return;
+    const { utils, writeFile } = await import("xlsx");
+
+    const studentName = student.fullName ?? student.name;
+    const monthName = MONTHS[month - 1];
+
+    const rows = [
+      ["Attendance Report"],
+      ["Student", studentName],
+      ["Email", student.email],
+      ["Branch", student.branch ?? ""],
+      ["Year", student.year ?? ""],
+      ["Month", `${monthName} ${year}`],
+      [],
+      ["Summary"],
+      ["Total Working Days", report.totalWorkingDays],
+      ["Present Days", report.presentDays],
+      ["Absent Days", report.absentDays],
+      ["Attendance %", `${report.attendancePercentage}%`],
+      [],
+      ["Day-by-Day Breakdown"],
+      ["Date", "Day", "Status", "Time"],
+    ];
+
+    for (const rec of report.records) {
+      const date = new Date(rec.date + "T00:00:00");
+      rows.push([
+        rec.date,
+        date.toLocaleDateString("en-US", { weekday: "long" }),
+        rec.status,
+        rec.time ?? "",
+      ]);
+    }
+
+    const wb = utils.book_new();
+    const ws = utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+    utils.book_append_sheet(wb, ws, "Attendance Report");
+    writeFile(wb, `Attendance_${String(studentName).replace(/\s+/g, "_")}_${monthName}_${year}.xlsx`);
+  }, [report, student, month, year]);
 
   if (isLoading) {
     return (
@@ -77,7 +120,6 @@ export default function AdminStudentDetail() {
         <button
           onClick={() => setLocation("/admin/students")}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-          data-testid="button-back"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Students
@@ -91,7 +133,7 @@ export default function AdminStudentDetail() {
               </span>
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-foreground" data-testid="text-student-name">
+              <h2 className="text-2xl font-bold text-foreground">
                 {student.fullName ?? student.name}
               </h2>
               <p className="text-muted-foreground">{student.email}</p>
@@ -129,12 +171,39 @@ export default function AdminStudentDetail() {
           {/* Attendance summary */}
           <Card className="border-card-border shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">
-                Attendance — {today.toLocaleString("en-US", { month: "long", year: "numeric" })}
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold">Monthly Summary</CardTitle>
+                <div className="flex gap-2">
+                  <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+                    <SelectTrigger className="h-7 text-xs w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.map((m, i) => (
+                        <SelectItem key={m} value={String(i + 1)} className="text-xs">{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                    <SelectTrigger className="h-7 text-xs w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {years.map((y) => (
+                        <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              {report ? (
+              {reportLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-16 bg-muted rounded" />
+                  <div className="h-4 bg-muted rounded" />
+                </div>
+              ) : report ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-muted rounded-lg p-3 text-center">
@@ -170,40 +239,66 @@ export default function AdminStudentDetail() {
           </Card>
         </div>
 
-        {/* Full history */}
+        {/* Day-by-day breakdown — matches the summary box exactly */}
         <Card className="border-card-border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              Full Attendance History
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                Day-by-Day Breakdown — {MONTHS[(month - 1)]} {year}
+              </CardTitle>
+              {report && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadExcel}
+                  className="flex items-center gap-1.5 text-xs h-8"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export Excel
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {!history || history.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No attendance records yet.</p>
+            {reportLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-10 bg-muted/50 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : !report || report.records.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No working days found for this period.</p>
             ) : (
               <div className="space-y-1 max-h-80 overflow-y-auto">
-                {[...history].reverse().map((rec) => {
+                {report.records.map((rec) => {
                   const date = new Date(rec.date + "T00:00:00");
                   const label = date.toLocaleDateString("en-US", {
                     weekday: "short",
                     day: "numeric",
                     month: "short",
-                    year: "numeric",
                   });
+                  const present = rec.status === "Present";
                   return (
                     <div
-                      key={rec.id}
+                      key={rec.date}
                       className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors"
-                      data-testid={`attendance-${rec.id}`}
                     >
                       <div className="flex items-center gap-3">
-                        <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                        {present ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-destructive shrink-0" />
+                        )}
                         <span className="text-sm">{label}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{rec.time}</span>
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                        {present && rec.time && (
+                          <span className="text-xs text-muted-foreground font-mono">{rec.time}</span>
+                        )}
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${present
+                          ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                          : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}>
                           {rec.status}
                         </span>
                       </div>
