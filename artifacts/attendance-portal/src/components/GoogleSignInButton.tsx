@@ -57,15 +57,16 @@ export function GoogleSignInButton({ onCredential, text = "signin_with" }: Props
 
     if (window.google) {
       init();
-    } else {
-      const interval = setInterval(() => {
-        if (window.google) {
-          clearInterval(interval);
-          init();
-        }
-      }, 100);
-      return () => clearInterval(interval);
+      return;
     }
+
+    const interval = setInterval(() => {
+      if (window.google) {
+        clearInterval(interval);
+        init();
+      }
+    }, 100);
+    return () => clearInterval(interval);
   }, [onCredential, text]);
 
   if (!CLIENT_ID) return null;

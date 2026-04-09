@@ -61,7 +61,7 @@ router.get(
   authenticate,
   requireAdmin,
   async (req: AuthenticatedRequest, res): Promise<void> => {
-    const { userId } = req.params;
+    const userId = String(req.params["userId"] ?? "");
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       res.status(400).json({ error: "Invalid userId" });
       return;

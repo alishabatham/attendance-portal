@@ -108,7 +108,7 @@ router.get("/attendance/today", authenticate, async (req: AuthenticatedRequest, 
 });
 
 router.get("/attendance/report/:userId", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
-  const targetUserId = req.params["userId"];
+  const targetUserId = String(req.params["userId"] ?? "");
   if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
     res.status(400).json({ error: "Invalid userId" });
     return;
@@ -186,7 +186,7 @@ router.get("/attendance/report/:userId", authenticate, async (req: Authenticated
 });
 
 router.get("/attendance/history/:userId", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
-  const targetUserId = req.params["userId"];
+  const targetUserId = String(req.params["userId"] ?? "");
   if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
     res.status(400).json({ error: "Invalid userId" });
     return;

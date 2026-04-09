@@ -11,7 +11,7 @@ let isConnected = false;
 
 export async function connectDB(): Promise<void> {
   if (isConnected) return;
-  await mongoose.connect(MONGODB_URI, { dbName: "attendance_portal" });
+  await mongoose.connect(MONGODB_URI!, { dbName: "attendance_portal" });
   isConnected = true;
   logger.info("Connected to MongoDB");
 }
