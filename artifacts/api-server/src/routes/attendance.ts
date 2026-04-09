@@ -110,14 +110,15 @@ router.get("/attendance/report/:userId", authenticate, async (req: Authenticated
   const month = queryParsed.success && queryParsed.data.month ? queryParsed.data.month : now.getMonth() + 1;
   const year = queryParsed.success && queryParsed.data.year ? queryParsed.data.year : now.getFullYear();
 
-  const joiningDate = student.joiningDate
-    ? new Date(student.joiningDate)
-    : new Date(student.createdAt);
+  // Use account creation date as the baseline — joiningDate is academic metadata,
+  // not when the student started using the portal.
+  const portalJoinDate = new Date(student.createdAt);
 
   const startOfMonth = new Date(year, month - 1, 1);
   const endOfMonth = new Date(year, month, 0);
 
-  const startDate = joiningDate > startOfMonth ? joiningDate : startOfMonth;
+  // Start counting attendance from whichever is later: start of month or portal join date
+  const startDate = portalJoinDate > startOfMonth ? portalJoinDate : startOfMonth;
   const endDate = endOfMonth > now ? now : endOfMonth;
 
   const allRecords = await db
