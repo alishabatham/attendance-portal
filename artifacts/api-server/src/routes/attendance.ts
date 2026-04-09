@@ -1,8 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
-import { db, attendanceTable, usersTable } from "@workspace/db";
+import mongoose from "mongoose";
+import { User, Attendance } from "../models/index.js";
 import { authenticate, type AuthenticatedRequest } from "../middlewares/authenticate.js";
-import { GetAttendanceReportParams, GetAttendanceReportQueryParams, GetAttendanceHistoryParams } from "@workspace/api-zod";
 import { getLocationSettings } from "./settings.js";
 
 function haversineDistanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -35,7 +34,6 @@ router.post("/attendance/mark", authenticate, async (req: AuthenticatedRequest, 
   const userId = req.user!.userId;
   const today = getTodayDate();
 
-  // Location check
   const locSettings = await getLocationSettings();
   if (locSettings.enforcement && locSettings.configured) {
     const { latitude, longitude } = req.body as { latitude?: number; longitude?: number };
@@ -60,12 +58,9 @@ router.post("/attendance/mark", authenticate, async (req: AuthenticatedRequest, 
     }
   }
 
-  const existing = await db
-    .select()
-    .from(attendanceTable)
-    .where(and(eq(attendanceTable.userId, userId), eq(attendanceTable.date, today)));
+  const existing = await Attendance.findOne({ userId: new mongoose.Types.ObjectId(userId), date: today });
 
-  if (existing.length > 0) {
+  if (existing) {
     res.status(409).json({ error: "Attendance already marked for today" });
     return;
   }
@@ -73,22 +68,19 @@ router.post("/attendance/mark", authenticate, async (req: AuthenticatedRequest, 
   const { localTime } = req.body as { localTime?: string };
   const timeToStore = localTime ?? getCurrentTime();
 
-  const [record] = await db
-    .insert(attendanceTable)
-    .values({
-      userId,
-      date: today,
-      time: timeToStore,
-      status: "Present",
-    })
-    .returning();
+  const record = await Attendance.create({
+    userId: new mongoose.Types.ObjectId(userId),
+    date: today,
+    time: timeToStore,
+    status: "Present",
+  });
 
   res.status(201).json({
-    id: record!.id,
-    userId: record!.userId,
-    date: record!.date,
-    time: record!.time,
-    status: record!.status,
+    id: record._id.toString(),
+    userId: record.userId.toString(),
+    date: record.date,
+    time: record.time,
+    status: record.status,
   });
 });
 
@@ -96,10 +88,7 @@ router.get("/attendance/today", authenticate, async (req: AuthenticatedRequest, 
   const userId = req.user!.userId;
   const today = getTodayDate();
 
-  const [record] = await db
-    .select()
-    .from(attendanceTable)
-    .where(and(eq(attendanceTable.userId, userId), eq(attendanceTable.date, today)));
+  const record = await Attendance.findOne({ userId: new mongoose.Types.ObjectId(userId), date: today });
 
   if (!record) {
     res.json({ marked: false, record: null });
@@ -109,8 +98,8 @@ router.get("/attendance/today", authenticate, async (req: AuthenticatedRequest, 
   res.json({
     marked: true,
     record: {
-      id: record.id,
-      userId: record.userId,
+      id: record._id.toString(),
+      userId: record.userId.toString(),
       date: record.date,
       time: record.time,
       status: record.status,
@@ -119,14 +108,11 @@ router.get("/attendance/today", authenticate, async (req: AuthenticatedRequest, 
 });
 
 router.get("/attendance/report/:userId", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
-  const paramsParsed = GetAttendanceReportParams.safeParse(req.params);
-  if (!paramsParsed.success) {
-    res.status(400).json({ error: paramsParsed.error.message });
+  const targetUserId = req.params["userId"];
+  if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
     return;
   }
-
-  const queryParsed = GetAttendanceReportQueryParams.safeParse(req.query);
-  const targetUserId = paramsParsed.data.userId;
 
   const requestingUserId = req.user!.userId;
   const requestingRole = req.user!.role;
@@ -136,35 +122,25 @@ router.get("/attendance/report/:userId", authenticate, async (req: Authenticated
     return;
   }
 
-  const [student] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, targetUserId));
-
+  const student = await User.findById(targetUserId);
   if (!student) {
     res.status(404).json({ error: "Student not found" });
     return;
   }
 
   const now = new Date();
-  const month = queryParsed.success && queryParsed.data.month ? queryParsed.data.month : now.getMonth() + 1;
-  const year = queryParsed.success && queryParsed.data.year ? queryParsed.data.year : now.getFullYear();
+  const month = req.query["month"] ? Number(req.query["month"]) : now.getMonth() + 1;
+  const year = req.query["year"] ? Number(req.query["year"]) : now.getFullYear();
 
-  // Use account creation date as the baseline — joiningDate is academic metadata,
-  // not when the student started using the portal.
   const portalJoinDate = new Date(student.createdAt);
 
   const startOfMonth = new Date(year, month - 1, 1);
   const endOfMonth = new Date(year, month, 0);
 
-  // Start counting attendance from whichever is later: start of month or portal join date
   const startDate = portalJoinDate > startOfMonth ? portalJoinDate : startOfMonth;
   const endDate = endOfMonth > now ? now : endOfMonth;
 
-  const allRecords = await db
-    .select()
-    .from(attendanceTable)
-    .where(eq(attendanceTable.userId, targetUserId));
+  const allRecords = await Attendance.find({ userId: new mongoose.Types.ObjectId(targetUserId) });
 
   const recordMap = new Map<string, typeof allRecords[0]>();
   for (const r of allRecords) {
@@ -210,13 +186,12 @@ router.get("/attendance/report/:userId", authenticate, async (req: Authenticated
 });
 
 router.get("/attendance/history/:userId", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
-  const paramsParsed = GetAttendanceHistoryParams.safeParse(req.params);
-  if (!paramsParsed.success) {
-    res.status(400).json({ error: paramsParsed.error.message });
+  const targetUserId = req.params["userId"];
+  if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
     return;
   }
 
-  const targetUserId = paramsParsed.data.userId;
   const requestingUserId = req.user!.userId;
   const requestingRole = req.user!.role;
 
@@ -225,16 +200,13 @@ router.get("/attendance/history/:userId", authenticate, async (req: Authenticate
     return;
   }
 
-  const records = await db
-    .select()
-    .from(attendanceTable)
-    .where(eq(attendanceTable.userId, targetUserId))
-    .orderBy(attendanceTable.date);
+  const records = await Attendance.find({ userId: new mongoose.Types.ObjectId(targetUserId) })
+    .sort({ date: 1 });
 
   res.json(
     records.map((r) => ({
-      id: r.id,
-      userId: r.userId,
+      id: r._id.toString(),
+      userId: r.userId.toString(),
       date: r.date,
       time: r.time,
       status: r.status,

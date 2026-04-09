@@ -1,14 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { User } from "../models/index.js";
 import { SaveProfileBody } from "@workspace/api-zod";
 import { authenticate, type AuthenticatedRequest } from "../middlewares/authenticate.js";
+import type { IUser } from "../models/index.js";
 
 const router: IRouter = Router();
 
-function formatUser(user: typeof usersTable.$inferSelect) {
+function formatUser(user: IUser) {
   return {
-    id: user.id,
+    id: user._id.toString(),
     email: user.email,
     name: user.name,
     role: user.role,
@@ -30,10 +30,7 @@ function formatUser(user: typeof usersTable.$inferSelect) {
 router.get("/user/profile", authenticate, async (req: AuthenticatedRequest, res): Promise<void> => {
   const userId = req.user!.userId;
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
+  const user = await User.findById(userId);
 
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -65,9 +62,9 @@ router.post("/user/profile", authenticate, async (req: AuthenticatedRequest, res
     interestAreaCustom,
   } = parsed.data;
 
-  const [user] = await db
-    .update(usersTable)
-    .set({
+  const user = await User.findByIdAndUpdate(
+    userId,
+    {
       fullName,
       joiningDate,
       collegeName,
@@ -79,9 +76,9 @@ router.post("/user/profile", authenticate, async (req: AuthenticatedRequest, res
       interestArea,
       interestAreaCustom: interestAreaCustom ?? null,
       profileCompleted: true,
-    })
-    .where(eq(usersTable.id, userId))
-    .returning();
+    },
+    { new: true }
+  );
 
   if (!user) {
     res.status(404).json({ error: "User not found" });

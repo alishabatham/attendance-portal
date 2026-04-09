@@ -1,22 +1,16 @@
 import { Router, type IRouter } from "express";
-import { db, settingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { Setting } from "../models/index.js";
 import { authenticate, requireAdmin, type AuthenticatedRequest } from "../middlewares/authenticate.js";
 
 const router: IRouter = Router();
 
-const LOCATION_KEYS = ["lat", "lng", "radius_m", "enforcement"] as const;
-
 async function getSetting(key: string): Promise<string | null> {
-  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.key, key));
+  const row = await Setting.findOne({ key });
   return row?.value ?? null;
 }
 
 async function setSetting(key: string, value: string): Promise<void> {
-  await db
-    .insert(settingsTable)
-    .values({ key, value })
-    .onConflictDoUpdate({ target: settingsTable.key, set: { value } });
+  await Setting.findOneAndUpdate({ key }, { value }, { upsert: true });
 }
 
 export async function getLocationSettings() {
@@ -35,7 +29,6 @@ export async function getLocationSettings() {
   };
 }
 
-// Public: students need to know if location enforcement is on (but not the coords)
 router.get("/location-check", authenticate, async (_req, res): Promise<void> => {
   const settings = await getLocationSettings();
   res.json({

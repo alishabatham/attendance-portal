@@ -1,18 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, and } from "drizzle-orm";
-import { db, usersTable, attendanceTable } from "@workspace/db";
+import mongoose from "mongoose";
+import { User, Attendance } from "../models/index.js";
 import { authenticate, requireAdmin, type AuthenticatedRequest } from "../middlewares/authenticate.js";
-import {
-  ListStudentsQueryParams,
-  GetStudentParams,
-  GetAdminAttendanceByDateQueryParams,
-} from "@workspace/api-zod";
+import type { IUser } from "../models/index.js";
 
 const router: IRouter = Router();
 
-function formatUser(user: typeof usersTable.$inferSelect) {
+function formatUser(user: IUser) {
   return {
-    id: user.id,
+    id: user._id.toString(),
     email: user.email,
     name: user.name,
     role: user.role,
@@ -36,42 +32,25 @@ router.get(
   authenticate,
   requireAdmin,
   async (req: AuthenticatedRequest, res): Promise<void> => {
-    const queryParsed = ListStudentsQueryParams.safeParse(req.query);
-    const params = queryParsed.success ? queryParsed.data : {};
+    const { branch, year, interestArea, search } = req.query as Record<string, string | undefined>;
 
-    const conditions = [eq(usersTable.role, "student")];
+    const filter: Record<string, unknown> = { role: "student" };
 
-    if (params.branch) {
-      conditions.push(ilike(usersTable.branch, `%${params.branch}%`));
-    }
-    if (params.year) {
-      conditions.push(ilike(usersTable.year, `%${params.year}%`));
-    }
-    if (params.interestArea) {
-      conditions.push(ilike(usersTable.interestArea, `%${params.interestArea}%`));
-    }
-    if (params.search) {
-      const searchTerm = `%${params.search}%`;
-      const allStudents = await db
-        .select()
-        .from(usersTable)
-        .where(and(...conditions));
+    if (branch) filter["branch"] = { $regex: branch, $options: "i" };
+    if (year) filter["year"] = { $regex: year, $options: "i" };
+    if (interestArea) filter["interestArea"] = { $regex: interestArea, $options: "i" };
 
-      const filtered = allStudents.filter(
+    let students = await User.find(filter);
+
+    if (search) {
+      const term = search.toLowerCase();
+      students = students.filter(
         (s) =>
-          s.name.toLowerCase().includes(params.search!.toLowerCase()) ||
-          s.email.toLowerCase().includes(params.search!.toLowerCase()) ||
-          (s.fullName?.toLowerCase().includes(params.search!.toLowerCase()) ?? false)
+          s.name.toLowerCase().includes(term) ||
+          s.email.toLowerCase().includes(term) ||
+          (s.fullName?.toLowerCase().includes(term) ?? false)
       );
-
-      res.json(filtered.map(formatUser));
-      return;
     }
-
-    const students = await db
-      .select()
-      .from(usersTable)
-      .where(and(...conditions));
 
     res.json(students.map(formatUser));
   }
@@ -82,16 +61,13 @@ router.get(
   authenticate,
   requireAdmin,
   async (req: AuthenticatedRequest, res): Promise<void> => {
-    const paramsParsed = GetStudentParams.safeParse(req.params);
-    if (!paramsParsed.success) {
-      res.status(400).json({ error: paramsParsed.error.message });
+    const { userId } = req.params;
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      res.status(400).json({ error: "Invalid userId" });
       return;
     }
 
-    const [student] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, paramsParsed.data.userId));
+    const student = await User.findById(userId);
 
     if (!student) {
       res.status(404).json({ error: "Student not found" });
@@ -107,40 +83,27 @@ router.get(
   authenticate,
   requireAdmin,
   async (req: AuthenticatedRequest, res): Promise<void> => {
-    const queryParsed = GetAdminAttendanceByDateQueryParams.safeParse(req.query);
     const date =
-      queryParsed.success && queryParsed.data.date
-        ? queryParsed.data.date
-        : new Date().toISOString().split("T")[0];
+      (req.query["date"] as string | undefined) ??
+      new Date().toISOString().split("T")[0];
 
-    const records = await db
-      .select({
-        id: attendanceTable.id,
-        userId: attendanceTable.userId,
-        date: attendanceTable.date,
-        time: attendanceTable.time,
-        status: attendanceTable.status,
-        studentName: usersTable.fullName,
-        branch: usersTable.branch,
-        year: usersTable.year,
-        email: usersTable.email,
-      })
-      .from(attendanceTable)
-      .leftJoin(usersTable, eq(attendanceTable.userId, usersTable.id))
-      .where(eq(attendanceTable.date, date as string));
+    const records = await Attendance.find({ date }).populate<{ userId: IUser }>("userId");
 
     res.json(
-      records.map((r) => ({
-        id: r.id,
-        userId: r.userId,
-        date: r.date,
-        time: r.time,
-        status: r.status,
-        studentName: r.studentName,
-        branch: r.branch,
-        year: r.year,
-        email: r.email ?? "",
-      }))
+      records.map((r) => {
+        const student = r.userId as unknown as IUser;
+        return {
+          id: r._id.toString(),
+          userId: student?._id?.toString() ?? "",
+          date: r.date,
+          time: r.time,
+          status: r.status,
+          studentName: student?.fullName ?? student?.name ?? null,
+          branch: student?.branch ?? null,
+          year: student?.year ?? null,
+          email: student?.email ?? "",
+        };
+      })
     );
   }
 );
@@ -151,8 +114,8 @@ router.get(
   requireAdmin,
   async (req: AuthenticatedRequest, res): Promise<void> => {
     const now = new Date();
-    const month = req.query.month ? Number(req.query.month) : now.getMonth() + 1;
-    const year = req.query.year ? Number(req.query.year) : now.getFullYear();
+    const month = req.query["month"] ? Number(req.query["month"]) : now.getMonth() + 1;
+    const year = req.query["year"] ? Number(req.query["year"]) : now.getFullYear();
 
     if (isNaN(month) || month < 1 || month > 12 || isNaN(year)) {
       res.status(400).json({ error: "Invalid month or year" });
@@ -163,7 +126,6 @@ router.get(
     const endOfMonth = new Date(year, month, 0);
     const endDate = endOfMonth > now ? now : endOfMonth;
 
-    // Collect all working days in the month
     const workingDays: string[] = [];
     const cursor = new Date(startOfMonth);
     cursor.setHours(0, 0, 0, 0);
@@ -175,45 +137,38 @@ router.get(
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    // Fetch all students
-    const students = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.role, "student"));
+    const students = await User.find({ role: "student" });
 
-    // Fetch all attendance records and filter for the month in-memory
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
     const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(endOfMonth.getDate()).padStart(2, "0")}`;
 
-    const allMonthRecords = await db
-      .select()
-      .from(attendanceTable);
+    const allMonthRecords = await Attendance.find({
+      date: { $gte: monthStart, $lte: monthEnd },
+    });
 
-    // Build a map: userId -> Set<date>
-    const presentMap = new Map<number, Set<string>>();
+    const presentMap = new Map<string, Set<string>>();
     for (const rec of allMonthRecords) {
-      if (rec.date >= monthStart && rec.date <= monthEnd) {
-        if (!presentMap.has(rec.userId)) {
-          presentMap.set(rec.userId, new Set());
-        }
-        presentMap.get(rec.userId)!.add(rec.date);
+      const uid = rec.userId.toString();
+      if (!presentMap.has(uid)) {
+        presentMap.set(uid, new Set());
       }
+      presentMap.get(uid)!.add(rec.date);
     }
 
     const result = students.map((student) => {
       const portalJoinDate = new Date(student.createdAt);
       portalJoinDate.setHours(0, 0, 0, 0);
-      const presentSet = presentMap.get(student.id) ?? new Set<string>();
+      const uid = student._id.toString();
+      const presentSet = presentMap.get(uid) ?? new Set<string>();
 
-      // Only count working days from when student joined the portal
       const studentWorkingDays = workingDays.filter((d) => new Date(d) >= portalJoinDate);
       const presentDays = studentWorkingDays.filter((d) => presentSet.has(d)).length;
       const absentDays = studentWorkingDays.length - presentDays;
-      const percentage = studentWorkingDays.length > 0
-        ? Math.round((presentDays / studentWorkingDays.length) * 1000) / 10
-        : 0;
+      const percentage =
+        studentWorkingDays.length > 0
+          ? Math.round((presentDays / studentWorkingDays.length) * 1000) / 10
+          : 0;
 
-      // Per-day status for all working days
       const dayStatus: Record<string, string> = {};
       for (const d of workingDays) {
         const joinedByThen = new Date(d) >= portalJoinDate;
@@ -227,7 +182,7 @@ router.get(
       }
 
       return {
-        id: student.id,
+        id: uid,
         name: student.fullName ?? student.name,
         email: student.email,
         branch: student.branch ?? "",
@@ -259,15 +214,8 @@ router.get(
   async (_req: AuthenticatedRequest, res): Promise<void> => {
     const today = new Date().toISOString().split("T")[0] as string;
 
-    const allStudents = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.role, "student"));
-
-    const todayAttendance = await db
-      .select()
-      .from(attendanceTable)
-      .where(eq(attendanceTable.date, today));
+    const allStudents = await User.find({ role: "student" });
+    const todayAttendance = await Attendance.find({ date: today });
 
     const totalStudents = allStudents.length;
     const presentToday = todayAttendance.length;

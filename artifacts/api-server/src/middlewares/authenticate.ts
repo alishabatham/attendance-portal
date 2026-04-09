@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/auth.js";
 
 export interface AuthenticatedRequest extends Request {
-  user?: { userId: number; email: string; role: string };
+  user?: { userId: string; email: string; role: string };
 }
 
 export function authenticate(

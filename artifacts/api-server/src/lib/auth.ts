@@ -12,10 +12,10 @@ export function comparePassword(password: string, hash: string): Promise<boolean
   return bcrypt.compare(password, hash);
 }
 
-export function signToken(payload: { userId: number; email: string; role: string }): string {
+export function signToken(payload: { userId: string; email: string; role: string }): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 }
 
-export function verifyToken(token: string): { userId: number; email: string; role: string } {
-  return jwt.verify(token, JWT_SECRET) as { userId: number; email: string; role: string };
+export function verifyToken(token: string): { userId: string; email: string; role: string } {
+  return jwt.verify(token, JWT_SECRET) as { userId: string; email: string; role: string };
 }

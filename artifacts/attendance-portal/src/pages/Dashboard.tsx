@@ -34,14 +34,14 @@ export default function Dashboard() {
     query: { queryKey: getGetTodayAttendanceQueryKey(), enabled: !!getToken() },
   });
 
-  const userId = profile?.id;
+  const userId = profile?.id as unknown as number | undefined;
   const today = new Date();
   const month = today.getMonth() + 1;
   const year = today.getFullYear();
 
-  const { data: report } = useGetAttendanceReport(userId ?? 0, { month, year }, {
+  const { data: report } = useGetAttendanceReport(userId ?? (0 as unknown as number), { month, year }, {
     query: {
-      queryKey: getGetAttendanceReportQueryKey(userId ?? 0, { month, year }),
+      queryKey: getGetAttendanceReportQueryKey(userId ?? (0 as unknown as number), { month, year }),
       enabled: !!userId,
     },
   });
@@ -144,7 +144,7 @@ export default function Dashboard() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getGetTodayAttendanceQueryKey() }),
-        queryClient.invalidateQueries({ queryKey: getGetAttendanceReportQueryKey(userId ?? 0, { month, year }) }),
+        queryClient.invalidateQueries({ queryKey: getGetAttendanceReportQueryKey(userId ?? (0 as unknown as number), { month, year }) }),
       ]);
       toast.success("Attendance marked! Have a great day.");
     } catch {

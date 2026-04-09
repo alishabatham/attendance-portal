@@ -24,11 +24,11 @@ export default function Report() {
     query: { queryKey: getGetProfileQueryKey(), enabled: !!getToken() },
   });
 
-  const userId = profile?.id;
+  const userId = profile?.id as unknown as number | undefined;
 
-  const { data: report, isLoading } = useGetAttendanceReport(userId ?? 0, { month, year }, {
+  const { data: report, isLoading } = useGetAttendanceReport(userId ?? (0 as unknown as number), { month, year }, {
     query: {
-      queryKey: getGetAttendanceReportQueryKey(userId ?? 0, { month, year }),
+      queryKey: getGetAttendanceReportQueryKey(userId ?? (0 as unknown as number), { month, year }),
       enabled: !!userId,
     },
   });

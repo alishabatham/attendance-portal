@@ -22,7 +22,7 @@ const MONTHS = [
 export default function AdminStudentDetail() {
   const [, setLocation] = useLocation();
   const params = useParams<{ id: string }>();
-  const userId = Number(params.id);
+  const userId = params.id as unknown as number;
 
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth() + 1);
@@ -30,13 +30,13 @@ export default function AdminStudentDetail() {
   const years = [today.getFullYear() - 1, today.getFullYear()];
 
   const { data: student, isLoading } = useGetStudent(userId, {
-    query: { queryKey: getGetStudentQueryKey(userId), enabled: !!getToken() && !!userId },
+    query: { queryKey: getGetStudentQueryKey(userId), enabled: !!getToken() && !!params.id },
   });
 
   const { data: report, isLoading: reportLoading } = useGetAttendanceReport(userId, { month, year }, {
     query: {
       queryKey: getGetAttendanceReportQueryKey(userId, { month, year }),
-      enabled: !!getToken() && !!userId,
+      enabled: !!getToken() && !!params.id,
     },
   });
 

@@ -1,17 +1,17 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { User } from "../models/index.js";
 import { SignupBody, LoginBody } from "@workspace/api-zod";
 import { hashPassword, comparePassword, signToken } from "../lib/auth.js";
 import { OAuth2Client } from "google-auth-library";
+import type { IUser } from "../models/index.js";
 
 const router: IRouter = Router();
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-function formatUser(user: typeof usersTable.$inferSelect) {
+function formatUser(user: IUser) {
   return {
-    id: user.id,
+    id: user._id.toString(),
     email: user.email,
     name: user.name,
     role: user.role,
@@ -39,32 +39,25 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
 
   const { email, password, name } = parsed.data;
 
-  const existing = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()));
-
-  if (existing.length > 0) {
+  const existing = await User.findOne({ email: email.toLowerCase() });
+  if (existing) {
     res.status(409).json({ error: "Email already in use" });
     return;
   }
 
   const passwordHash = await hashPassword(password);
 
-  const [user] = await db
-    .insert(usersTable)
-    .values({
-      email: email.toLowerCase(),
-      name,
-      passwordHash,
-      role: "student",
-      profileCompleted: false,
-    })
-    .returning();
+  const user = await User.create({
+    email: email.toLowerCase(),
+    name,
+    passwordHash,
+    role: "student",
+    profileCompleted: false,
+  });
 
-  const token = signToken({ userId: user!.id, email: user!.email, role: user!.role });
+  const token = signToken({ userId: user._id.toString(), email: user.email, role: user.role });
 
-  res.status(201).json({ token, user: formatUser(user!) });
+  res.status(201).json({ token, user: formatUser(user) });
 });
 
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -76,10 +69,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const { email, password } = parsed.data;
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()));
+  const user = await User.findOne({ email: email.toLowerCase() });
 
   if (!user) {
     res.status(401).json({ error: "Invalid email or password" });
@@ -92,7 +82,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const token = signToken({ userId: user.id, email: user.email, role: user.role });
+  const token = signToken({ userId: user._id.toString(), email: user.email, role: user.role });
 
   res.json({ token, user: formatUser(user) });
 });
@@ -124,26 +114,20 @@ router.post("/auth/google-signin", async (req, res): Promise<void> => {
     const email = payload.email.toLowerCase();
     const name = payload.name ?? email.split("@")[0] ?? "Student";
 
-    let [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email));
+    let user = await User.findOne({ email });
 
     if (!user) {
-      [user] = await db
-        .insert(usersTable)
-        .values({
-          email,
-          name,
-          passwordHash: "",
-          role: "student",
-          profileCompleted: false,
-        })
-        .returning();
+      user = await User.create({
+        email,
+        name,
+        passwordHash: "",
+        role: "student",
+        profileCompleted: false,
+      });
     }
 
-    const token = signToken({ userId: user!.id, email: user!.email, role: user!.role });
-    res.json({ token, user: formatUser(user!) });
+    const token = signToken({ userId: user._id.toString(), email: user.email, role: user.role });
+    res.json({ token, user: formatUser(user) });
   } catch {
     res.status(401).json({ error: "Google authentication failed. Please try again." });
   }
