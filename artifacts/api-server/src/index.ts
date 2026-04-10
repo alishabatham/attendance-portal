@@ -1,5 +1,5 @@
-import app from "./app";
-import { logger } from "./lib/logger";
+import app, { initializeApp } from "./app.js";
+import { logger } from "./lib/logger.js";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +14,11 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+initializeApp().catch((err) => {
+  logger.error({ err }, "Failed to initialize app");
+  process.exit(1);
+});
 
 app.listen(port, (err) => {
   if (err) {

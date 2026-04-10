@@ -7,8 +7,6 @@ import { connectDB } from "./lib/db.js";
 import { User } from "./models/index.js";
 import { hashPassword } from "./lib/auth.js";
 
-// const pinoHttp = (pinoHttpModule as unknown as { default: typeof pinoHttpModule }).default ?? pinoHttpModule;
-
 const app: Express = express();
 
 app.use(
@@ -59,11 +57,17 @@ async function seedDemoUsers() {
   }
 }
 
-connectDB()
-  .then(() => seedDemoUsers())
-  .catch((err) => {
-    logger.error({ err }, "Failed to connect to MongoDB");
-    process.exit(1);
-  });
+let initPromise: Promise<void> | null = null;
+
+export function initializeApp(): Promise<void> {
+  if (!initPromise) {
+    initPromise = connectDB()
+      .then(() => seedDemoUsers())
+      .then(() => {
+        logger.info("App initialized");
+      });
+  }
+  return initPromise;
+}
 
 export default app;
