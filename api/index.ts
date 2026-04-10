@@ -1,9 +1,10 @@
-import type { IncomingMessage, ServerResponse } from "http";
+import type { IncomingMessage, ServerResponse, RequestListener } from "http";
 import app, { initializeApp } from "../artifacts/api-server/src/app.js";
 
 const ready = initializeApp();
+const handler = app as unknown as RequestListener;
 
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
+export default async function vercelHandler(req: IncomingMessage, res: ServerResponse) {
   try {
     await ready;
   } catch {
@@ -11,5 +12,5 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.end(JSON.stringify({ error: "Service temporarily unavailable" }));
     return;
   }
-  app(req as Parameters<typeof app>[0], res as Parameters<typeof app>[1]);
+  handler(req, res);
 }
